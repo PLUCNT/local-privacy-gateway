@@ -20,6 +20,7 @@ def test_defaults_without_env() -> None:
     assert settings.debug_dir is None
     assert settings.transform_system is True
     assert settings.placeholder_notice is True
+    assert settings.convert_media is True
     assert settings.debug_originals is False
 
 
@@ -161,3 +162,10 @@ def test_env_defaults_to_process_environment(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setenv("PGW_PROXY_LISTEN", "127.0.0.1:1234")
 
     assert load_settings().listen_port == 1234
+
+
+@pytest.mark.parametrize("value", ["0", "false", "no", "off"])
+def test_convert_media_is_disabled_by_falsy_env(value: str) -> None:
+    settings = load_settings(env={"PGW_PROXY_CONVERT_MEDIA": value})
+
+    assert settings.convert_media is False

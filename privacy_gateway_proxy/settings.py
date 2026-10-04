@@ -32,6 +32,7 @@ class ProxySettings:
     debug_dir: Path | None = None
     transform_system: bool = True
     placeholder_notice: bool = True
+    convert_media: bool = True
     debug_originals: bool = False
 
 
@@ -86,6 +87,9 @@ def load_settings(env: Mapping[str, str] | None = None, **overrides: object) -> 
     placeholder_notice = environment.get("PGW_PROXY_PLACEHOLDER_NOTICE")
     if placeholder_notice is not None:
         values["placeholder_notice"] = placeholder_notice.strip().lower() not in FALSY_VALUES
+    convert_media = environment.get("PGW_PROXY_CONVERT_MEDIA")
+    if convert_media is not None:
+        values["convert_media"] = convert_media.strip().lower() not in FALSY_VALUES
     debug_originals = environment.get("PGW_PROXY_DEBUG_ORIGINALS")
     if debug_originals is not None:
         values["debug_originals"] = debug_originals.strip().lower() in TRUTHY_VALUES

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import re
 from collections.abc import AsyncIterator, Callable, Iterator
@@ -15,8 +16,11 @@ from privacy_gateway.config import Config
 from privacy_gateway.model import DetectionReport
 from privacy_gateway.pseudonymize import PseudonymizedText, pseudonymize_text
 from privacy_gateway_proxy import server
+from privacy_gateway_proxy.media import IMAGE_NOTICE
 from privacy_gateway_proxy.settings import ProxySettings
 from privacy_gateway_proxy.transform import NOTICE_TEXT
+
+from .test_media import make_pdf
 
 CUSTOMER = "Alpenbank AG"
 IBAN = "DE89370400440532013000"
@@ -407,3 +411,43 @@ async def test_a_text_document_block_is_pseudonymized_and_restored(gateway: Gate
     document = json.loads(seen[0].content)["messages"][0]["content"][-1]
     assert document["source"]["data"] == f"IBAN {IBAN_TOKEN}"
     assert response.json()["content"][0]["text"] == IBAN
+
+
+def pdf_tool_result_body(pdf_base64: str) -> dict:
+    body = request_body("Lies das PDF.")
+    pdf = {"type": "base64", "media_type": "application/pdf", "data": pdf_base64}
+    image = {"type": "base64", "media_type": "image/png", "data": "iVBORw0KGgo="}
+    body["messages"].append(
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": "tu_1",
+                    "content": [{"type": "document", "source": pdf}, {"type": "image", "source": image}],
+                }
+            ],
+        }
+    )
+    return body
+
+
+@pytest.mark.asyncio
+async def test_pdf_text_is_pseudonymized_and_images_are_removed(gateway: Gateway) -> None:
+    pdf_base64 = base64.b64encode(make_pdf([f"Frau {LAST_NAME}", f"IBAN {IBAN}"])).decode()
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"id": "msg_1", "content": [{"type": "text", "text": "ok"}]})
+
+    async with build(gateway, handler) as client:
+        response = await client.post("/v1/messages", json=pdf_tool_result_body(pdf_base64))
+
+    assert response.status_code == 200
+    sent = seen[0].content.decode("utf-8")
+    assert_clean(seen[0])
+    assert pdf_base64 not in sent
+    assert "iVBORw0KGgo=" not in sent
+    assert IBAN_TOKEN in sent
+    assert IMAGE_NOTICE in json.loads(sent)["messages"][1]["content"][0]["content"][1]["text"]

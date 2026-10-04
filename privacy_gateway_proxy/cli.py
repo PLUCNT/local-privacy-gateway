@@ -57,12 +57,13 @@ def log_startup(settings: ProxySettings) -> None:
     log = logging.getLogger("privacy_gateway_proxy")
     log.info(
         "settings listen=%s:%s upstream=%s transform_system=%s placeholder_notice=%s "
-        "debug_dir=%s debug_originals=%s",
+        "convert_media=%s debug_dir=%s debug_originals=%s",
         settings.listen_host,
         settings.listen_port,
         settings.upstream_base_url,
         settings.transform_system,
         settings.placeholder_notice,
+        settings.convert_media,
         settings.debug_dir,
         settings.debug_originals,
     )

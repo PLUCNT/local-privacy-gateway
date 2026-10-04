@@ -264,6 +264,7 @@ stored token is lost.
 | `PGW_PROXY_SESSION_STRATEGY` | `metadata` | How the vault session key is derived: `metadata`, `header` or `single`. |
 | `PGW_PROXY_TRANSFORM_SYSTEM` | `1` | `0`/`false`/`no`/`off` forwards the `system` prompt unchanged. Required with an OAuth login, see below. |
 | `PGW_PROXY_PLACEHOLDER_NOTICE` | `1` | `0`/`false`/`no`/`off` suppresses the short notice that explains the placeholder format to the model. |
+| `PGW_PROXY_CONVERT_MEDIA` | `1` | `0`/`false`/`no`/`off` forwards `image` and binary `document` blocks unchanged instead of converting them (see *Images and PDFs*). |
 | `PGW_PROXY_DEBUG_DIR` | unset | Directory for one JSON dump per transformed request (mode `0600` in a `0700` directory). Contains the **pseudonymized** body. |
 | `PGW_PROXY_DEBUG_ORIGINALS` | unset (off) | `1`/`true`/`yes`/`on` additionally dumps the **original, untransformed** body of a request that failed the leak check. Clear text. |
 
@@ -632,13 +633,13 @@ Transformed on `POST /v1/messages` and `POST /v1/messages/count_tokens`:
 - **Request:** `system` (string, or the `text` of `type: "text"` blocks), `messages[].content`
   (string or `text` blocks), `tool_result` content (string or `text` blocks), every string leaf
   inside `tool_use.input`, and `source.data` of a `document` block whose `source.type` is `text`.
+  Before that, images and binary documents are converted to text blocks (see *Images and PDFs*).
 - **Response:** `content[].text` and every string leaf in `tool_use.input`.
 
 Never touched, forwarded unchanged and **not scanned**:
 
 - `thinking` and `redacted_thinking` blocks and their `signature` — Anthropic signs them, so a
   single changed byte invalidates the turn.
-- `image` blocks, and `document` blocks with a base64 or PDF source.
 - Server-side and MCP tool blocks: `server_tool_use`, `mcp_tool_use`, `search_result`.
 - `tools` definitions, `metadata`, `model`, and all headers.
 
@@ -646,6 +647,22 @@ Never touched, forwarded unchanged and **not scanned**:
 path the proxy cannot transform — unparsable body, non-object body, a body with `Content-Encoding`,
 or a sub-path such as `/v1/messages/batches` — is refused with HTTP 422 and never reaches the
 upstream. That is deliberate: forwarding it unchanged would mean forwarding clear text.
+
+### Images and PDFs
+
+With `PGW_PROXY_CONVERT_MEDIA=1` (default) every `image` and binary `document` block in
+`messages[].content` and inside `tool_result` content is replaced by a text block before
+pseudonymization; `cache_control` is kept:
+
+- **PDF with a text layer** (base64, `application/pdf`): the text is extracted locally with `pypdf`,
+  page by page, and then pseudonymized like any other text. Layout, images, stamps and signatures
+  are lost.
+- **PDF without any text layer** (a scan): replaced by a notice. Pages without text inside an
+  otherwise readable PDF are marked as removed.
+- **Images**, unreadable or encrypted PDFs, and documents with a `url`, `file` or `content` source:
+  replaced by a notice. Nothing of their content leaves the machine.
+
+The log line `media blocks converted: N` shows when this happened. There is no OCR.
 
 ### Streaming
 
@@ -955,8 +972,8 @@ Supporting properties:
   receive a second token. Within one document `correlate()` joins them; across turns it does not.
   (An automatic derivation of name parts was implemented and removed again: it made the leak check
   reject legitimate requests.)
-- **Images, PDFs and base64.** `image` blocks and `document` blocks with a base64 or PDF source
-  pass through unchanged and are never scanned. Screenshots and scanned invoices are not protected.
+- **Images and scans are removed, not read.** Without OCR the model sees a notice instead of a
+  screenshot or a scanned PDF. With `PGW_PROXY_CONVERT_MEDIA=0` they pass through unscanned.
 - **`thinking` blocks keep their tokens.** They are signed by Anthropic, so the proxy cannot rewrite
   them. Extended-thinking text you see may contain `<IBAN_001>` instead of the value.
 - **Redaction is irreversible.** A round trip is byte-identical only for documents that contain no

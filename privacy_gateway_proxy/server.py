@@ -19,6 +19,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from privacy_gateway.model import LeakageError
+from privacy_gateway_proxy.media import convert_media
 from privacy_gateway_proxy.session_key import is_valid_key, session_key_for
 from privacy_gateway_proxy.settings import ProxySettings, is_loopback
 
@@ -114,6 +115,10 @@ async def _transformed(
         return _error("privacy_gateway_session", "session key has an unusable form", 400)
     session = _session_for(gateway, sessions, key)
     streaming = body.get("stream") is True
+    if settings.convert_media:
+        body, converted = convert_media(body)
+        if converted:
+            logging.getLogger("privacy_gateway_proxy").info("media blocks converted: %d", converted)
     include_system = settings.transform_system
     fields = _field_count(body, include_system)
     try:
