@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-CLASS_COUNT = 146
+CLASS_COUNT = 147
 FIXTURE = "customer_letter_de"
 IBAN = "DE89370400440532013000"
 REPO_ROOT = Path(__file__).resolve().parents[2]

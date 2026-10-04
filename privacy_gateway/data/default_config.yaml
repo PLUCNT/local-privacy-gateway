@@ -203,6 +203,13 @@ classes:
     patterns:
       - '\b(?:[IVX]{1,5}|\d{1,4}) ?[A-Z][A-Za-z]{0,3} ?\d{1,6}/\d{2}(?:\d{2})?\b'
       - '(?i:\baz\b\.?|aktenzeichen|\bgz\b\.?|geschäftszeichen|unser zeichen|ihr zeichen)\s*:?\s*(?=[^\s,;()<>]*\d)([A-Za-z0-9](?:[^\s,;()<>]*[A-Za-z0-9])?)'
+  # Veröffentlichte Entscheidungen der Bundesgerichte bleiben lesbar (ignore schlägt CASE_NUMBER per Priorität);
+  # eigene Verfahren dort sind damit sichtbar – bei Bedarf per Nutzer-Config enabled: false
+  FEDERAL_CASE_NUMBER:
+    category: IDENTIFIER
+    policy: ignore
+    priority: 201
+    patterns: ['\b(?:BFH|BGH|BVerfG|BVerwG|BAG|BSG|BPatG)\b[^\n;]{0,60}?\b((?:B ?)?(?:[IVX]{1,5}|\d{1,4}) ?[A-Z][A-Za-z]{0,3} ?\d{1,6}/\d{2}(?:\d{2})?(?: R\b)?)']
   # Steuernummer: Länderformat mit Schrägstrichen, sonst nur nach Stichwort (13-stellig, Hessen mit Leerzeichen)
   TAX_NUMBER:
     category: IDENTIFIER

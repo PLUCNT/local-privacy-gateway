@@ -8,8 +8,8 @@ from privacy_gateway import Gateway
 DETECTED = [
     ("LG München I, Az. 12 O 3456/25, Termin", "12 O 3456/25", "CASE_NUMBER"),
     ("Urteil des FG München vom Mai, 4 K 1234/24.", "4 K 1234/24", "CASE_NUMBER"),
-    ("BGH, Beschluss IX ZR 123/24 zur Haftung", "IX ZR 123/24", "CASE_NUMBER"),
-    ("BVerfG 1 BvR 2345/23 bestätigt", "1 BvR 2345/23", "CASE_NUMBER"),
+    ("Revision eingelegt, IX ZR 123/24 zur Haftung", "IX ZR 123/24", "CASE_NUMBER"),
+    ("Verfassungsbeschwerde 1 BvR 2345/23 erhoben", "1 BvR 2345/23", "CASE_NUMBER"),
     ("StA München I, 102 Js 12345/25", "102 Js 12345/25", "CASE_NUMBER"),
     ("Unser Zeichen: 2025/0042-PL, bitte angeben", "2025/0042-PL", "CASE_NUMBER"),
     ("Aktenzeichen 7781/25.", "7781/25", "CASE_NUMBER"),
@@ -37,6 +37,33 @@ NOT_DETECTED = [
     "Art. 3 Abs. 1 GG",
     "BStBl II 2024, 123",
 ]
+
+
+# Veröffentlichte Entscheidungen der Bundesgerichte bleiben lesbar, damit das Modell sie einordnen kann
+PUBLIC_DECISIONS = [
+    "BFH, Urteil vom 12.03.2024 – II R 12/22, BStBl II 2024, 567",
+    "vgl. BGH IX ZR 123/24",
+    "BVerfG, Beschluss vom 3. Mai 2023 - 1 BvR 2345/23",
+    "BFH-Urteil VI R 5/21",
+    "BAG 2 AZR 99/24; BSG B 12 KR 3/23 R; BVerwG 9 C 4/22",
+]
+
+FEDERAL_AND_OWN = (
+    "BGH IX ZR 123/24; Unser Zeichen: 2025/0042-PL",
+    "2025/0042-PL",
+)
+
+
+@pytest.mark.parametrize("text", PUBLIC_DECISIONS)
+def test_federal_court_decision_stays_readable(gateway: Gateway, text: str) -> None:
+    assert gateway.pseudonymize(text).text == text
+
+
+def test_own_file_number_next_to_a_federal_decision_is_still_tokenized(gateway: Gateway) -> None:
+    text, own = FEDERAL_AND_OWN
+    result = gateway.pseudonymize(text)
+    assert "IX ZR 123/24" in result.text
+    assert own not in result.text
 
 
 @pytest.mark.parametrize(("text", "value", "data_class"), DETECTED)

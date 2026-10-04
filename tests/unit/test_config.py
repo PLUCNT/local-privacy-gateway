@@ -11,7 +11,8 @@ from privacy_gateway.model import ConfigError
 
 SKIP_USER = {"PGW_SKIP_USER_CONFIG": "1"}
 
-EXPECTED_CLASS_COUNT = 146
+EXPECTED_CLASS_COUNT = 147
+IGNORED_CLASSES = {"SALUTATION", "FEDERAL_CASE_NUMBER"}
 
 
 def write_config(tmp_path: Path, body: str, name: str = "user.yaml") -> Path:
@@ -48,7 +49,7 @@ def test_secret_classes_are_redacted(default_config: Config) -> None:
 
 def test_non_secret_classes_are_tokenized(default_config: Config) -> None:
     for data_class in default_config.registry:
-        if data_class.category is not Category.SECRET and data_class.name != "SALUTATION":
+        if data_class.category is not Category.SECRET and data_class.name not in IGNORED_CLASSES:
             assert data_class.policy is Policy.TOKENIZE
 
 
@@ -129,9 +130,11 @@ def test_user_config_may_set_policy_ignore(tmp_path: Path) -> None:
     assert load_config(path, env=SKIP_USER).registry.get("IBAN").policy is Policy.IGNORE
 
 
-def test_salutation_is_the_only_bundled_class_with_policy_ignore(default_config: Config) -> None:
+def test_only_salutation_and_federal_case_numbers_have_policy_ignore(
+    default_config: Config,
+) -> None:
     ignored = {c.name for c in default_config.registry if c.policy is Policy.IGNORE}
-    assert ignored == {"SALUTATION"}
+    assert ignored == IGNORED_CLASSES
 
 
 def test_unknown_category_raises(tmp_path: Path) -> None:

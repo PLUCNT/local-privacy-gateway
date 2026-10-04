@@ -379,7 +379,7 @@ no sensitive data detected
 
 ### `pgw classes`
 
-Every registered class as `name`, `policy`, `priority`, tab-separated. 146 classes with the bundled
+Every registered class as `name`, `policy`, `priority`, tab-separated. 147 classes with the bundled
 defaults; your own configuration adds to and overrides that list.
 
 ```bash
