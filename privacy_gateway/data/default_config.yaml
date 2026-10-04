@@ -196,6 +196,44 @@ classes:
     patterns: ['\b[A-HJ-NPR-Z0-9]{17}\b']
     validator: vin
     context_words: ['vin', 'fahrgestell']
+  # Aktenzeichen: Gerichte/StA (Senat bzw. Kammer, Registerzeichen, Nummer/Jahr) und Zeichen nach Stichwort
+  CASE_NUMBER:
+    category: IDENTIFIER
+    policy: tokenize
+    patterns:
+      - '\b(?:[IVX]{1,5}|\d{1,4}) ?[A-Z][A-Za-z]{0,3} ?\d{1,6}/\d{2}(?:\d{2})?\b'
+      - '(?i:\baz\b\.?|aktenzeichen|\bgz\b\.?|geschäftszeichen|unser zeichen|ihr zeichen)\s*:?\s*(?=[^\s,;()<>]*\d)([A-Za-z0-9](?:[^\s,;()<>]*[A-Za-z0-9])?)'
+  # Steuernummer: Länderformat mit Schrägstrichen, sonst nur nach Stichwort (13-stellig, Hessen mit Leerzeichen)
+  TAX_NUMBER:
+    category: IDENTIFIER
+    policy: tokenize
+    patterns:
+      - '\b\d{2,3}/\d{3,4}/\d{4,5}\b'
+      - '(?i:steuer-?n(?:umme)?r\.?|\bst\.?-?nr\b\.?)\s*:?\s*(\d{13}|\d{3} \d{3} \d{5})\b'
+  # Handels-, Genossenschafts-, Partnerschafts- und Vereinsregister
+  COMMERCIAL_REGISTER_ID:
+    category: IDENTIFIER
+    policy: tokenize
+    patterns:
+      - '\b(?:HR[AB]|GnR|GsR) ?\d{1,6}(?: B\b)?'
+      - '(?i:partnerschaftsregister|vereinsregister|registergericht|amtsgericht)[^\n]{0,40}?\b((?:PR|VR) ?\d{1,6})\b'
+  # Grundbuch: Blattnummer (nur mit Grundbuch-Kontext), Flurstück und Gemarkung
+  LAND_REGISTER_ID:
+    category: IDENTIFIER
+    policy: tokenize
+    patterns: ['(?i:blatt)\s*(?:nr\.?\s*)?(\d{1,6}[a-z]?)\b']
+    context_words: ['grundbuch', 'grundbuchblatt', 'band', 'gemarkung']
+    context_required: true
+  PARCEL_ID:
+    category: IDENTIFIER
+    policy: tokenize
+    patterns: ['(?i:flurst(?:ücks?|ücke|ücken)\b|flst\b\.?|fl\.? ?-?nr\b\.?)\s*(?:nr\.?\s*)?(\d{1,5}(?:/\d{1,4})?)']
+  LAND_REGISTER_DISTRICT:
+    category: LOCATION
+    policy: tokenize
+    patterns:
+      - '(?i:gemarkung)\s+([A-ZÄÖÜ][\wäöüß-]+(?: [A-ZÄÖÜ][\wäöüß-]+)?)'
+      - '(?i:grundbuch)(?:es)?\s+(?:des\s+Amtsgerichts\s+[A-ZÄÖÜ][\wäöüß-]+\s+)?von\s+([A-ZÄÖÜ][\wäöüß-]+)'
   GENERIC_ID:
     category: IDENTIFIER
     policy: tokenize
