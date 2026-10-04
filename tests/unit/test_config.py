@@ -252,6 +252,7 @@ def test_user_config_file_is_skipped_by_env(
     user_config.parent.mkdir(parents=True)
     user_config.write_text("min_confidence: 0.11\n", encoding="utf-8")
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))
 
     assert load_config(env={}).min_confidence == 0.11
     assert load_config(env=SKIP_USER).min_confidence == 0.5

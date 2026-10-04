@@ -118,6 +118,7 @@ def test_events_are_appended(tmp_path: Path) -> None:
     assert [event["event"] for event in _read(path)] == ["vault_purge", "error", "restore"]
 
 
+@pytest.mark.posix_only
 def test_file_and_parent_directory_permissions(tmp_path: Path) -> None:
     path = tmp_path / "logs" / "audit.jsonl"
     AuditLog(path).vault_purge(1)
@@ -125,6 +126,7 @@ def test_file_and_parent_directory_permissions(tmp_path: Path) -> None:
     assert os.stat(path.parent).st_mode & 0o777 == 0o700
 
 
+@pytest.mark.posix_only
 def test_existing_file_and_directory_permissions_are_corrected(tmp_path: Path) -> None:
     path = tmp_path / "logs" / "audit.jsonl"
     path.parent.mkdir()

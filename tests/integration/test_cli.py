@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 CLASS_COUNT = 140
 FIXTURE = "customer_letter_de"
 IBAN = "DE89370400440532013000"
@@ -47,6 +49,7 @@ def test_pseudonymize_then_restore_round_trip(
     assert restored.stdout == source.read_text(encoding="utf-8")
 
 
+@pytest.mark.posix_only
 def test_output_files_are_private(
     gateway_env: dict[str, str], fixtures_dir: Path, tmp_path: Path
 ) -> None:

@@ -77,6 +77,7 @@ def test_plist_path_is_in_launch_agents() -> None:
     assert path == Path.home() / "Library" / "LaunchAgents" / f"{LABEL}.plist"
 
 
+@pytest.mark.posix_only
 def test_install_writes_plist_and_bootstraps(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -96,6 +97,7 @@ def test_install_writes_plist_and_bootstraps(
     assert recorder.calls == [["launchctl", "bootstrap", f"gui/{os.getuid()}", str(target)]]
 
 
+@pytest.mark.posix_only
 def test_uninstall_boots_out_and_removes_plist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -111,6 +113,7 @@ def test_uninstall_boots_out_and_removes_plist(
     assert recorder.calls == [["launchctl", "bootout", f"gui/{os.getuid()}/{LABEL}"]]
 
 
+@pytest.mark.posix_only
 def test_uninstall_tolerates_missing_plist(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -120,6 +123,7 @@ def test_uninstall_tolerates_missing_plist(
     launchd.uninstall(LABEL)
 
 
+@pytest.mark.posix_only
 def test_install_raises_when_launchctl_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -130,6 +134,7 @@ def test_install_raises_when_launchctl_fails(
         launchd.install(LABEL, ARGS, tmp_path / "logs", ENV)
 
 
+@pytest.mark.posix_only
 def test_status_reports_loaded_and_listening(monkeypatch: pytest.MonkeyPatch) -> None:
     recorder = Recorder()
     monkeypatch.setattr(launchd, "_run", recorder)
@@ -228,7 +233,7 @@ def test_cli_uninstall_launchd(
 
     assert cli.main(["uninstall-launchd", "--label", LABEL]) == 0
     assert removed == [LABEL]
-    assert "removed /p.plist" in capsys.readouterr().out
+    assert f"removed {Path('/p.plist')}" in capsys.readouterr().out
 
 
 def test_log_startup_reports_the_effective_settings(
@@ -245,7 +250,7 @@ def test_log_startup_reports_the_effective_settings(
     assert "upstream=https://u.test" in caplog.text
     assert "transform_system=False" in caplog.text
     assert "placeholder_notice=True" in caplog.text
-    assert "debug_dir=/tmp/d" in caplog.text
+    assert f"debug_dir={Path('/tmp/d')}" in caplog.text
     assert "debug_originals=False" in caplog.text
     assert "non-loopback" not in caplog.text
 

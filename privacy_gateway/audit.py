@@ -97,6 +97,7 @@ class AuditLog:
         os.chmod(parent, 0o700)
         record = {"ts": datetime.now(UTC).isoformat(), "event": event, **fields}
         descriptor = os.open(self._path, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
-        os.fchmod(descriptor, 0o600)
+        if hasattr(os, "fchmod"):  # unter Windows erst ab Python 3.13
+            os.fchmod(descriptor, 0o600)
         with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")

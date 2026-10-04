@@ -65,6 +65,11 @@ def _base_label(label: str) -> str:
     return label
 
 
+# Unter Windows fehlt O_NOFOLLOW; O_BINARY verhindert dort die \n→\r\n-Umsetzung im Schlüssel
+_O_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_O_BINARY = getattr(os, "O_BINARY", 0)
+
+
 def _ensure_private_parent(path: Path) -> None:
     parent = path.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -83,9 +88,10 @@ def load_or_create_key(path: Path) -> bytes:
     """Return the vault key, creating a new 0600 key file when absent."""
     path = Path(path)
     if path.exists():
-        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        descriptor = os.open(path, os.O_RDONLY | _O_NOFOLLOW | _O_BINARY)
         try:
-            if os.fstat(descriptor).st_mode & 0o077:
+            # Windows meldet immer 0o666/0o444; Schutz dort nur über die ACLs des Profils
+            if os.name != "nt" and os.fstat(descriptor).st_mode & 0o077:
                 raise VaultError(f"key file permissions are too permissive: {path}")
             key = os.read(descriptor, KEY_SIZE + 1)
         finally:
@@ -95,7 +101,7 @@ def load_or_create_key(path: Path) -> bytes:
         return key
     _ensure_private_parent(path)
     key = secrets.token_bytes(KEY_SIZE)
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | _O_BINARY, 0o600)
     try:
         os.write(descriptor, key)
     finally:

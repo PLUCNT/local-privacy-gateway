@@ -37,7 +37,7 @@ RESPONSE_DROP_HEADERS = {"content-length", "content-encoding", "transfer-encodin
 UPSTREAM_TIMEOUT = httpx.Timeout(600.0, connect=10.0)
 SESSION_CACHE_SIZE = 64
 DEBUG_FILE_MODE = 0o600
-DEBUG_FILE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+DEBUG_FILE_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0)
 UNSAFE_NAME_CHARS = re.compile(r"[^A-Za-z0-9._-]")
 
 _transform: Any

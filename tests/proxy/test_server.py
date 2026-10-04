@@ -1,4 +1,5 @@
 import json
+import os
 import stat
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
@@ -510,7 +511,8 @@ async def test_debug_dir_receives_the_transformed_body(
     written = dumps[0].read_text(encoding="utf-8")
     assert json.loads(written)["messages"][0]["content"] == f"Hallo {TOKEN}"
     assert SECRET not in written
-    assert stat.S_IMODE(dumps[0].stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(dumps[0].stat().st_mode) == 0o600
 
 
 @pytest.mark.asyncio
@@ -704,6 +706,7 @@ async def test_the_stream_is_restored_leniently(monkeypatch: pytest.MonkeyPatch)
 
 
 @pytest.mark.asyncio
+@pytest.mark.posix_only
 async def test_the_debug_directory_is_private(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -753,4 +756,5 @@ async def test_the_original_dump_needs_the_switch(
     dumps = list(tmp_path.glob("*.json"))
     assert len(dumps) == 1
     assert dumps[0].name.endswith("-FAILED-original.json")
-    assert stat.S_IMODE(dumps[0].stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(dumps[0].stat().st_mode) == 0o600

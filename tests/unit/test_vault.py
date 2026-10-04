@@ -34,8 +34,9 @@ def test_load_or_create_key_creates_32_bytes_with_mode_600(tmp_path: Path) -> No
     key_file = tmp_path / "keys" / "vault.key"
     key = load_or_create_key(key_file)
     assert len(key) == 32
-    assert os.stat(key_file).st_mode & 0o777 == 0o600
-    assert os.stat(key_file.parent).st_mode & 0o777 == 0o700
+    if os.name != "nt":
+        assert os.stat(key_file).st_mode & 0o777 == 0o600
+        assert os.stat(key_file.parent).st_mode & 0o777 == 0o700
 
 
 def test_load_or_create_key_returns_existing_key(tmp_path: Path) -> None:
@@ -44,6 +45,7 @@ def test_load_or_create_key_returns_existing_key(tmp_path: Path) -> None:
     assert load_or_create_key(key_file) == first
 
 
+@pytest.mark.posix_only
 def test_load_or_create_key_rejects_world_readable_file(tmp_path: Path) -> None:
     key_file = tmp_path / "vault.key"
     load_or_create_key(key_file)
@@ -65,6 +67,7 @@ def test_load_or_create_key_announces_a_new_key_on_stderr(
     assert capsys.readouterr().err == ""
 
 
+@pytest.mark.posix_only
 def test_load_or_create_key_rejects_a_symlink(tmp_path: Path) -> None:
     target = tmp_path / "real.key"
     load_or_create_key(target)
@@ -88,6 +91,7 @@ def test_database_uses_wal_and_foreign_keys(vault: Vault, tmp_path: Path) -> Non
     conn.close()
 
 
+@pytest.mark.posix_only
 def test_existing_database_files_are_restricted_to_0600(tmp_path: Path) -> None:
     db_path = tmp_path / "store" / "vault.db"
     db_path.parent.mkdir()
