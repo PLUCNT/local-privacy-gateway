@@ -10,6 +10,14 @@ from privacy_gateway.model import DetectionReport, Leak, LeakageError, Span, Vau
 
 MIN_DIGITS_FOR_DIGIT_SEARCH = 6
 MIN_LENGTH_FOR_FUZZY_SEARCH = 4
+MIN_DIGITS_FOR_NUMBER_VALUE = 4
+MIN_LETTERS_FOR_WORD_VALUE = 3
+# Allerweltswörter, die eine Fehlerkennung als Name oder Ort tragen können
+COMMON_WORDS = frozenset({
+    "ich", "bei", "der", "die", "das", "des", "dem", "den", "ein", "und", "von", "vom", "mit", "für",
+    "aus", "auf", "nach", "vor", "bis", "als", "wie", "wir", "ihr", "sie", "er", "es", "man", "im",
+    "am", "an", "zu", "in", "so", "da",
+})
 
 _ANY_TOKEN = re.compile(r"<[A-Z][A-Z_]*?_(?:\d{3,}|REDACTED)>")
 _NUMBERED_TOKEN = re.compile(r"<[A-Z][A-Z_]*?_\d{3,}>")
@@ -91,8 +99,39 @@ class _Projections:
         return self._digits
 
 
+def is_weak_value(value: str) -> bool:
+    """True for values that identify nothing on their own: short numbers and common words.
+
+    Such a value is replaced where it was detected, but it is neither searched in the rest of
+    the text nor re-detected in later messages – a stored "12" would otherwise hit every date.
+    """
+    stripped = value.strip()
+    letters = sum(char.isalpha() for char in stripped)
+    digits = sum(char.isdigit() for char in stripped)
+    if letters == 0:
+        return digits < MIN_DIGITS_FOR_NUMBER_VALUE
+    if digits == 0 and stripped.lower() in COMMON_WORDS:
+        return True
+    return letters + digits < MIN_LETTERS_FOR_WORD_VALUE
+
+
+def repair_known_values(text: str, leaks: list[Leak]) -> str | None:
+    """Replace unreplaced occurrences of known values by their token; None when nothing to do."""
+    token_spans = [Span(match.start(), match.end()) for match in _ANY_TOKEN.finditer(text)]
+    fixable = [
+        leak for leak in leaks
+        if leak.kind == "original_value" and leak.token
+        and not any(Span(leak.start, leak.end).overlaps(token) for token in token_spans)
+    ]
+    if not fixable:
+        return None
+    for leak in sorted(fixable, key=lambda item: item.start, reverse=True):
+        text = text[: leak.start] + leak.token + text[leak.end :]
+    return text
+
+
 def _occurrences(views: _Projections, value: str) -> set[tuple[int, int]]:
-    if not value:
+    if not value or is_weak_value(value):
         return set()
     text = views.text
     hits: set[tuple[int, int]] = set()
@@ -149,12 +188,12 @@ def check_leakage(
         )
 
     views = _Projections(text)
-    for entry in entries.values():
+    for token, entry in entries.items():
         hits: set[tuple[int, int]] = set()
         for value in dict.fromkeys([entry.value, *entry.surface_forms]):
             hits |= _occurrences(views, value)
         for start, end in _merged(hits):
-            leaks.append(Leak("original_value", entry.data_class, start, end))
+            leaks.append(Leak("original_value", entry.data_class, start, end, token))
 
     for match in _NUMBERED_TOKEN.finditer(text):
         if match.group(0) not in entries:

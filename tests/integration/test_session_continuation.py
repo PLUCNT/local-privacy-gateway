@@ -45,7 +45,8 @@ def test_leakage_on_a_later_call_keeps_the_earlier_mappings(
         counters: dict[str, int] | None = None,
     ) -> PseudonymizedText:
         real = pseudonymize_text(text, report, config, counters=counters)
-        return PseudonymizedText(text=text, assignments=real.assignments)
+        # unbekannter Platzhalter: nicht reparierbar, das Leck bleibt bestehen
+        return PseudonymizedText(text=text + " <PERSON_999>", assignments=real.assignments)
 
     monkeypatch.setattr("privacy_gateway.api.pseudonymize_text", leaking)
     with pytest.raises(LeakageError):

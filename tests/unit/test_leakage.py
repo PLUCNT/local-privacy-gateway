@@ -140,12 +140,12 @@ def test_word_value_as_a_whole_word_is_a_leak(default_config: Config) -> None:
 
 
 def test_value_shorter_than_four_chars_matches_only_whole_words(default_config: Config) -> None:
-    entries = {"<USER_ID_001>": _entry("ab", "USER_ID")}
+    entries = {"<USER_ID_001>": _entry("abx", "USER_ID")}
 
-    assert check_leakage("abcd only", entries, _empty_scan, default_config.registry) is None
+    assert check_leakage("abxd only", entries, _empty_scan, default_config.registry) is None
 
     with pytest.raises(LeakageError):
-        check_leakage("ab cd", entries, _empty_scan, default_config.registry)
+        check_leakage("abx cd", entries, _empty_scan, default_config.registry)
 
 
 def test_residual_finding_is_a_leak(default_config: Config) -> None:

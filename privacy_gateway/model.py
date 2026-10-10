@@ -29,6 +29,7 @@ class Leak:
     data_class: str
     start: int
     end: int
+    token: str = field(default="", compare=False)
 
 
 class LeakageError(PrivacyGatewayError):

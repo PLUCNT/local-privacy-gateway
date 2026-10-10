@@ -338,7 +338,8 @@ async def test_a_leaking_request_returns_422_and_never_reaches_upstream(
         counters: dict[str, int] | None = None,
     ) -> PseudonymizedText:
         real = pseudonymize_text(text, report, config, counters=counters)
-        return PseudonymizedText(text=text, assignments=real.assignments)
+        # unbekannter Platzhalter: nicht reparierbar, das Leck bleibt bestehen
+        return PseudonymizedText(text=text + " <PERSON_999>", assignments=real.assignments)
 
     monkeypatch.setattr("privacy_gateway.api.pseudonymize_text", leaking)
     client = build(gateway, handler)

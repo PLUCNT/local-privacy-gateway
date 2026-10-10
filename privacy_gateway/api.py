@@ -14,7 +14,7 @@ from typing import Self
 from privacy_gateway.audit import AuditLog
 from privacy_gateway.config import Config, load_config
 from privacy_gateway.detect import Pipeline
-from privacy_gateway.leakage import check_leakage
+from privacy_gateway.leakage import check_leakage, repair_known_values
 from privacy_gateway.model import (
     DetectionReport,
     LeakageError,
@@ -30,6 +30,7 @@ from privacy_gateway.vault import Vault
 PSEUDONYMIZE_STAGE = "pseudonymize"
 SESSION_STAGE = "session_pseudonymize"
 RESULT_CACHE_SIZE = 256
+REPAIR_ROUNDS = 2
 
 
 class Gateway:
@@ -90,7 +91,7 @@ class Gateway:
                     assignment.attributes,
                 )
             entries = self.vault.load(session_id)
-            check_leakage(pseudonymized.text, entries, self._pipeline.run, self.config.registry)
+            final = _checked(pseudonymized.text, entries, self._pipeline.run, self.config.registry)
         except LeakageError:
             self._discard(session_id)
             self.audit.pseudonymize(session_id, {}, 0, "failed", _elapsed_ms(started))
@@ -112,9 +113,7 @@ class Gateway:
             summary.leakage,
             summary.duration_ms,
         )
-        return PseudonymizeResult(
-            text=pseudonymized.text, session_id=session_id, report=summary
-        )
+        return PseudonymizeResult(text=final, session_id=session_id, report=summary)
 
     def restore(self, text: str, session_id: str, mode: str | None = None) -> RestoreResult:
         """Map tokens back to the values recorded for that session."""
@@ -178,7 +177,7 @@ class GatewaySession:
                 text, report, self._gateway.config, counters=self._counters
             )
             self._write(text, pseudonymized, written, appended)
-            check_leakage(
+            final = _checked(
                 pseudonymized.text,
                 self._entries,
                 lambda candidate: pipeline.run(candidate, known),
@@ -197,8 +196,8 @@ class GatewaySession:
         self._gateway.audit.session_pseudonymize(
             self.session_id, len(written), len(appended), "ok", _elapsed_ms(started)
         )
-        self._remember(digest, pseudonymized.text)
-        return pseudonymized.text
+        self._remember(digest, final)
+        return final
 
     def _remember(self, digest: str, result: str) -> None:
         self._results[digest] = result
@@ -283,6 +282,20 @@ class GatewaySession:
                 self.session_id, token, entry.data_class, entry.value, forms, entry.attributes
             )
         self._counters = counters
+
+
+def _checked(text: str, entries, scan, registry) -> str:
+    """Leak-check the text; unreplaced known values are repaired, whatever remains raises."""
+    for round_ in range(REPAIR_ROUNDS + 1):
+        try:
+            check_leakage(text, entries, scan, registry)
+            return text
+        except LeakageError as exc:
+            repaired = repair_known_values(text, exc.leaks) if round_ < REPAIR_ROUNDS else None
+            if repaired is None:
+                raise
+            text = repaired
+    raise AssertionError("unreachable")
 
 
 def _elapsed_ms(started: float) -> int:

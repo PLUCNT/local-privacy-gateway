@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from privacy_gateway.detect.dictionaries import TrieMatcher, allows_genitive
 from privacy_gateway.detect.spans import TOKEN_ATTRIBUTE
+from privacy_gateway.leakage import is_weak_value
 from privacy_gateway.model import Finding, Span
 
 if TYPE_CHECKING:
@@ -36,7 +37,7 @@ class SessionStage:
     def __init__(self, known: Mapping[str, tuple[str, str]]) -> None:
         # ponytail: no name-part derivation; a stored part ("Alex") makes the
         # case-insensitive leak check reject every "/home/alex/" in later text
-        self._known = {form: value for form, value in known.items() if form}
+        self._known = {form: value for form, value in known.items() if form and not is_weak_value(form)}
         self._by_digits: dict[str, tuple[str, str]] = {}
         for form, value in self._known.items():
             digits = "".join(char for char in form if char.isdigit())
