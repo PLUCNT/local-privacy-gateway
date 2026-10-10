@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import secrets
 from collections.abc import Mapping
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from privacy_gateway.model import ConfigError
@@ -34,6 +34,9 @@ class ProxySettings:
     placeholder_notice: bool = True
     convert_media: bool = True
     debug_originals: bool = False
+    allowlist_path: Path | None = field(
+        default_factory=lambda: Path.home() / ".config" / "privacy-gateway" / "freigaben.txt"
+    )
 
 
 def is_loopback(host: str) -> bool:
@@ -90,6 +93,9 @@ def load_settings(env: Mapping[str, str] | None = None, **overrides: object) -> 
     convert_media = environment.get("PGW_PROXY_CONVERT_MEDIA")
     if convert_media is not None:
         values["convert_media"] = convert_media.strip().lower() not in FALSY_VALUES
+    allowlist = environment.get("PGW_PROXY_ALLOWLIST")
+    if allowlist is not None:
+        values["allowlist_path"] = Path(allowlist) if allowlist.strip() else None
     debug_originals = environment.get("PGW_PROXY_DEBUG_ORIGINALS")
     if debug_originals is not None:
         values["debug_originals"] = debug_originals.strip().lower() in TRUTHY_VALUES

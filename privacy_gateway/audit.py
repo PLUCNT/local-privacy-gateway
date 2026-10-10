@@ -83,6 +83,12 @@ class AuditLog:
             mode=mode,
         )
 
+    def leak_review(self, review_id: str, counts: dict[str, int]) -> None:
+        self._write("leak_review", review_id=review_id, counts=dict(counts))
+
+    def leak_decision(self, review_id: str, once: int, always: int, blocked: int) -> None:
+        self._write("leak_decision", review_id=review_id, once=once, always=always, blocked=blocked)
+
     def vault_purge(self, sessions: int) -> None:
         self._write("vault_purge", sessions=sessions)
 

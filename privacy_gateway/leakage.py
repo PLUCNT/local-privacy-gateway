@@ -115,6 +115,11 @@ def is_weak_value(value: str) -> bool:
     return letters + digits < MIN_LETTERS_FOR_WORD_VALUE
 
 
+def normalize_allowed(value: str) -> str:
+    """The form in which a released value is compared: trimmed and case-folded."""
+    return value.strip().casefold()
+
+
 def repair_known_values(text: str, leaks: list[Leak]) -> str | None:
     """Replace unreplaced occurrences of known values by their token; None when nothing to do."""
     token_spans = [Span(match.start(), match.end()) for match in _ANY_TOKEN.finditer(text)]

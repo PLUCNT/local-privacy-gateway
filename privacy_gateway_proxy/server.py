@@ -11,15 +11,26 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator, Mapping
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import parse_qs
 
 import httpx
 from starlette.applications import Starlette
 from starlette.requests import Request
-from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
+from privacy_gateway.leakage import normalize_allowed
 from privacy_gateway.model import LeakageError
 from privacy_gateway_proxy.media import convert_media
+from privacy_gateway_proxy.review import (
+    ReviewStore,
+    append_allowlist,
+    decisions,
+    leak_sites,
+    load_allowlist,
+    render_done,
+    render_page,
+)
 from privacy_gateway_proxy.session_key import is_valid_key, session_key_for
 from privacy_gateway_proxy.settings import ProxySettings, is_loopback
 
@@ -59,16 +70,21 @@ def create_app(settings: ProxySettings, gateway: Any, client: httpx.AsyncClient 
     """Build the proxy application for one gateway and one upstream client."""
     upstream = client if client is not None else httpx.AsyncClient(timeout=UPSTREAM_TIMEOUT)
     sessions: OrderedDict[str, Any] = OrderedDict()
+    reviews = ReviewStore()
 
     async def health(request: Request) -> Response:
         return JSONResponse({"status": "ok"})
 
+    async def review(request: Request) -> Response:
+        return await _review(request, settings, gateway, sessions, reviews)
+
     async def proxy(request: Request) -> Response:
-        return await _dispatch(request, settings, gateway, upstream, sessions)
+        return await _dispatch(request, settings, gateway, upstream, sessions, reviews)
 
     app = Starlette(
         routes=[
             Route("/health", health, methods=["GET"]),
+            Route("/pruefung/{review_id}", review, methods=["GET", "POST"]),
             Route("/{path:path}", proxy, methods=PROXY_METHODS),
         ]
     )
@@ -85,6 +101,7 @@ async def _dispatch(
     gateway: Any,
     client: httpx.AsyncClient,
     sessions: OrderedDict[str, Any],
+    reviews: ReviewStore,
 ) -> Response:
     if is_loopback(settings.listen_host) and not _host_allowed(request.headers.get("host", "")):
         return _error("privacy_gateway_forbidden", "host header is not loopback", 403)
@@ -96,7 +113,7 @@ async def _dispatch(
         body = None if encoded else _parse_json(raw)
         if not isinstance(body, dict) or request.url.path not in TRANSFORMED_PATHS:
             return _rejected(gateway, request, settings)
-        return await _transformed(request, body, settings, gateway, client, sessions)
+        return await _transformed(request, body, settings, gateway, client, sessions, reviews)
     return await _passthrough(request, raw, settings, client)
 
 
@@ -107,13 +124,14 @@ async def _transformed(
     gateway: Any,
     client: httpx.AsyncClient,
     sessions: OrderedDict[str, Any],
+    reviews: ReviewStore,
 ) -> Response:
     started = time.perf_counter()
     path = request.url.path
     key = session_key_for(request.headers, body, settings)
     if not is_valid_key(key):
         return _error("privacy_gateway_session", "session key has an unusable form", 400)
-    session = _session_for(gateway, sessions, key)
+    session = _session_for(gateway, sessions, key, settings)
     streaming = body.get("stream") is True
     if settings.convert_media:
         body, converted = convert_media(body)
@@ -132,7 +150,9 @@ async def _transformed(
         _audit(gateway, key, path, fields, session, "failed", streaming, started, include_system)
         if settings.debug_originals:
             _debug_dump(settings, f"{key}-FAILED-original", body)
-        return _leak_response(exc)
+        pending = reviews.add(key, leak_sites(exc))
+        _audit_review(gateway, pending.review_id, exc)
+        return _leak_response(exc, _review_url(settings, pending.review_id))
 
     _debug_dump(settings, key, new_body)
     payload = json.dumps(new_body).encode("utf-8")
@@ -266,10 +286,14 @@ async def _raw_chunks(response: httpx.Response) -> AsyncIterator[bytes]:
         yield chunk
 
 
-def _session_for(gateway: Any, sessions: OrderedDict[str, Any], key: str) -> Any:
+def _session_for(
+    gateway: Any, sessions: OrderedDict[str, Any], key: str, settings: ProxySettings | None = None
+) -> Any:
     session = sessions.pop(key, None)
     if session is None:
         session = gateway.session(key)
+        if settings is not None and isinstance(getattr(session, "allowed", None), set):
+            session.allowed |= load_allowlist(settings.allowlist_path)
     sessions[key] = session
     while len(sessions) > SESSION_CACHE_SIZE:
         sessions.popitem(last=False)
@@ -358,13 +382,64 @@ def _rejected(gateway: Any, request: Request, settings: ProxySettings) -> Respon
     )
 
 
-def _leak_response(exc: LeakageError) -> Response:
+def _leak_response(exc: LeakageError, review_url: str | None = None) -> Response:
     classes = sorted({leak.data_class for leak in exc.leaks if leak.data_class})
     message = (
         f"fail-closed: {len(exc.leaks)} potential leak(s) "
         f"(classes: {', '.join(classes) or 'none'})"
     )
+    if review_url:
+        message += f". Prüfen und freigeben: {review_url} – danach die Nachricht erneut senden."
     return _error("privacy_gateway_leak", message, 422)
+
+
+def _review_url(settings: ProxySettings, review_id: str) -> str:
+    host = "127.0.0.1" if settings.listen_host in ("0.0.0.0", "::", "") else settings.listen_host
+    return f"http://{host}:{settings.listen_port}/pruefung/{review_id}"
+
+
+def _audit_review(gateway: Any, review_id: str, exc: LeakageError) -> None:
+    event = getattr(getattr(gateway, "audit", None), "leak_review", None)
+    if event is None:
+        return
+    counts: dict[str, int] = {}
+    for leak in exc.leaks:
+        name = f"{leak.kind}:{leak.data_class or '-'}"
+        counts[name] = counts.get(name, 0) + 1
+    event(review_id, counts)
+
+
+async def _review(
+    request: Request,
+    settings: ProxySettings,
+    gateway: Any,
+    sessions: OrderedDict[str, Any],
+    reviews: ReviewStore,
+) -> Response:
+    """Show a blocked request's findings and apply the user's release decision."""
+    if is_loopback(settings.listen_host) and not _host_allowed(request.headers.get("host", "")):
+        return _error("privacy_gateway_forbidden", "host header is not loopback", 403)
+    pending = reviews.get(request.path_params["review_id"])
+    if pending is None:
+        return HTMLResponse("<p>Diese Prüfung ist unbekannt oder abgelaufen.</p>", status_code=404)
+    if request.method == "GET":
+        return HTMLResponse(render_page(pending))
+    chosen = decisions(pending.sites, parse_qs((await request.body()).decode("utf-8")))
+    once, always = chosen["once"], chosen["always"]
+    session = _session_for(gateway, sessions, pending.session_key, settings)
+    if isinstance(getattr(session, "allowed", None), set):
+        session.allowed |= {normalize_allowed(site.value) for site in once + always if site.value}
+    if always and settings.allowlist_path is not None:
+        append_allowlist(settings.allowlist_path, [site.value for site in always if site.value])
+        permanent = {normalize_allowed(site.value) for site in always if site.value}
+        for other in sessions.values():
+            if isinstance(getattr(other, "allowed", None), set):
+                other.allowed |= permanent
+    pending.decided = True
+    event = getattr(getattr(gateway, "audit", None), "leak_decision", None)
+    if event is not None:
+        event(pending.review_id, len(once), len(always), len(chosen["blocked"]))
+    return HTMLResponse(render_done(len(once), len(always), len(chosen["blocked"])))
 
 
 def _upstream_error(exc: httpx.HTTPError) -> Response:

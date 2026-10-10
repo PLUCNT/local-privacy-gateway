@@ -35,8 +35,9 @@ class Leak:
 class LeakageError(PrivacyGatewayError):
     """Raised when leakage validation finds sensitive residue."""
 
-    def __init__(self, leaks: list[Leak]) -> None:
+    def __init__(self, leaks: list[Leak], text: str = "") -> None:
         self.leaks: list[Leak] = leaks
+        self.text = text  # geprüfter Text, damit eine lokale Prüfseite die Fundstellen zeigen kann
         super().__init__(self._describe(leaks))
 
     @staticmethod

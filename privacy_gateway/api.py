@@ -14,7 +14,7 @@ from typing import Self
 from privacy_gateway.audit import AuditLog
 from privacy_gateway.config import Config, load_config
 from privacy_gateway.detect import Pipeline
-from privacy_gateway.leakage import check_leakage, repair_known_values
+from privacy_gateway.leakage import check_leakage, normalize_allowed, repair_known_values
 from privacy_gateway.model import (
     DetectionReport,
     LeakageError,
@@ -150,6 +150,7 @@ class GatewaySession:
         self._counters: dict[str, int] = gateway.vault.max_counters(session_id)
         self._results: OrderedDict[str, str] = OrderedDict()
         self._known_cache: dict[str, tuple[str, str]] | None = None
+        self.allowed: set[str] = set()  # vom Nutzer freigegebene Werte (normalisiert)
 
     def entries(self) -> Mapping[str, VaultEntry]:
         """Every token mapping this session knows."""
@@ -182,6 +183,7 @@ class GatewaySession:
                 self._entries,
                 lambda candidate: pipeline.run(candidate, known),
                 self._gateway.config.registry,
+                self.allowed,
             )
         except LeakageError:
             self._rollback(written, appended, counters)
@@ -284,16 +286,22 @@ class GatewaySession:
         self._counters = counters
 
 
-def _checked(text: str, entries, scan, registry) -> str:
-    """Leak-check the text; unreplaced known values are repaired, whatever remains raises."""
+def _checked(text: str, entries, scan, registry, allowed: frozenset[str] | set[str] = frozenset()) -> str:
+    """Leak-check the text: released values pass, unreplaced known values are repaired.
+
+    Whatever remains raises `LeakageError` carrying the checked text for a local review.
+    """
     for round_ in range(REPAIR_ROUNDS + 1):
         try:
             check_leakage(text, entries, scan, registry)
             return text
         except LeakageError as exc:
-            repaired = repair_known_values(text, exc.leaks) if round_ < REPAIR_ROUNDS else None
+            open_ = [leak for leak in exc.leaks if normalize_allowed(text[leak.start : leak.end]) not in allowed]
+            if not open_:
+                return text
+            repaired = repair_known_values(text, open_) if round_ < REPAIR_ROUNDS else None
             if repaired is None:
-                raise
+                raise LeakageError(open_, text) from None
             text = repaired
     raise AssertionError("unreachable")
 
